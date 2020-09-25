@@ -55,74 +55,108 @@ const time = document.getElementById('time');
 const record = document.getElementById('record');
 const recordIcon = record.querySelector('div');
 const download = document.getElementById('download');
-
-let stream = null;
 let url = null;
-let recorder;
-let chunks;
-let start;
-let before;
-let iid;
 
-async function startCapture() {
+async function addAudioStream(stream) {
+    let audio;
     try {
-        stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    } catch (err) { console.error('Error: ' + err); return; }
-    try {
-        const audio = await navigator.mediaDevices.getUserMedia({ audio: {
-            autoGainControl: true,
+        audio = await navigator.mediaDevices.getUserMedia({ audio: {
+            autoGainControl: false,
             noiseSuppression: false,
             echoCancellation: false,
             channelCount: 1
         }});
-        audio.getAudioTracks().forEach(track => stream.addTrack(track));
-    } catch (err) { console.info('No audio: ' + err); }
-    dumpInfo();
+    } catch (err) { console.info('No audio: ' + err); return; }
+
+    audio.getAudioTracks().forEach(track => stream.addTrack(track));
+}
+
+function startVideo(stream) {
     video.controls = false;
     video.srcObject = new MediaStream(stream.getVideoTracks());
     video.play();
-    recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
-    chunks = [];
-    recorder.ondataavailable = e => chunks.push(e.data);
-    recorder.onstop = e => {
-        if (chunks.size == 0) return;
-        if (url) URL.revokeObjectURL(url);
-        const completeBlob = new Blob(chunks, { type: chunks[0].type });
-        url = URL.createObjectURL(completeBlob);
-        video.src = url;
-        video.controls = true;
-        download.href = url;
-        download.download = 'capture.webm';
-        download.style.display = 'inline-block';
-        download.click();
-    };
-    start = Math.floor(performance.now() / 1000);
-    before = start;
-    time.innerHTML = '0:00';
-    iid = setInterval(() => {
-        const elapsed = Math.floor(performance.now() / 1000) - before;
-        if (elapsed == 0) return;
-        before += elapsed;
-        const total = before - start;
-        const min = Math.floor(total / 60);
-        const sec = total - min * 60;
-        time.innerHTML = min + ':' + ((sec < 10) ? '0' + sec : sec);
-    }, 200);
-    recorder.start();
-    recordIcon.style.borderRadius = 0;
 }
 
-function stopCapture() {
-    recorder.stop();
-    clearInterval(iid);
+function stopVideo() {
     video.pause();
     video.srcObject = null;
-    stream.getTracks().forEach(track => track.stop());
-    stream = null;
-    recordIcon.style = '';
+    video.src = url;
+    video.controls = true;
 }
 
-function dumpInfo() {
+function newRecorder(stream) {
+    const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+    const chunks = [];
+
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = e => finalizeRecording(chunks);
+
+    return recorder;
+}
+
+function finalizeRecording(chunks) {
+    if (chunks.size == 0) return;
+
+    if (url) URL.revokeObjectURL(url);
+
+    const completeBlob = new Blob(chunks, { type: chunks[0].type });
+    url = URL.createObjectURL(completeBlob);
+
+    stopVideo();
+
+    download.href = url;
+    download.download = 'capture.webm';
+    download.style.display = 'inline-block';
+    download.click();
+}
+
+function startTimer() {
+    const start = Math.floor(performance.now() / 1000);
+    let before = start;
+    time.innerHTML = '0:00';
+
+    return setInterval(() => {
+        const now = Math.floor(performance.now() / 1000);
+        if (now == before) return;
+
+        before = now;
+
+        const total = now - start;
+        const min = Math.floor(total / 60);
+        const sec = total - min * 60;
+
+        time.innerHTML = min + ':' + ((sec < 10) ? '0' + sec : sec);
+    }, 200);
+}
+
+async function startCapture() {
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    } catch (err) { console.error('Error: ' + err); return null; }
+
+    await addAudioStream(stream);
+    dumpInfo(stream);
+    startVideo(stream);
+
+    const recorder = newRecorder(stream);
+    recorder.start();
+
+    const iid = startTimer();
+
+    recordIcon.style.borderRadius = 0;
+
+    return { stream, recorder, iid };
+}
+
+function stopCapture(bundle) {
+    recordIcon.style = '';
+    clearInterval(bundle.iid);
+    bundle.recorder.stop();
+    bundle.stream.getTracks().forEach(track => track.stop());
+}
+
+function dumpInfo(stream) {
     stream.getTracks().forEach(track => {
         console.info("\nTrack settings:\n" +
             JSON.stringify(track.getSettings()) +
@@ -131,7 +165,26 @@ function dumpInfo() {
     });
 }
 
-record.addEventListener('click', e => stream ? stopCapture() : startCapture());
+function main() {
+    let bundle = null;
+    let locked = false;
+
+    record.onclick = async e => {
+        if (locked) return;
+        locked = true;
+
+        if (bundle) {
+            stopCapture(bundle);
+            bundle = null;
+        } else {
+            bundle = await startCapture();
+        }
+
+        locked = false;
+    }
+}
+
+main();
 </script>
 </body>
 </html>
