@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>JavaScript Screen Recorder</title>
+<style>
+body {
+    font-family: sans-serif;
+    text-align: center;
+}
+
+#video {
+    background-color: black;
+    margin-bottom: 1em;
+}
+
+#record {
+    background-color: rgb(214, 26, 26);
+    border: none;
+    border-radius: 50%;
+    margin-top: 1em;
+    height: 5em;
+    width: 5em;
+}
+
+#record div {
+    background-color: white;
+    border: none;
+    border-radius: 50%;
+    margin: auto;
+    height: 1.5em;
+    width: 1.5em;
+}
+
+#download {
+    display: none;
+    background-color: rgb(75, 218, 57);
+    border-radius: 1em;
+    color: black;
+    text-decoration: none;
+    margin-top: 1em;
+    padding: 1em;
+}
+</style>
+</head>
+<body>
+<h1>Screen Recorderino v0.1</h1>
+<video id="video" width="569" height="320"></video><br>
+<span id="time">0:00</span><br>
+<button id="record"><div></div></button><br>
+<a id="download">Download</a>
+<script>
+const video = document.getElementById('video');
+const time = document.getElementById('time');
+const record = document.getElementById('record');
+const recordIcon = record.querySelector('div');
+const download = document.getElementById('download');
+
+let stream = null;
+let url = null;
+let recorder;
+let chunks;
+let start;
+let before;
+let iid;
+
+async function startCapture() {
+    try {
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    } catch (err) { console.error('Error: ' + err); return; }
+    try {
+        const audio = await navigator.mediaDevices.getUserMedia({ audio: {
+            autoGainControl: true,
+            noiseSuppression: false,
+            echoCancellation: false,
+            channelCount: 1
+        }});
+        audio.getAudioTracks().forEach(track => stream.addTrack(track));
+    } catch (err) { console.info('No audio: ' + err); }
+    dumpInfo();
+    video.controls = false;
+    video.srcObject = new MediaStream(stream.getVideoTracks());
+    video.play();
+    recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+    chunks = [];
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.onstop = e => {
+        if (chunks.size == 0) return;
+        if (url) URL.revokeObjectURL(url);
+        const completeBlob = new Blob(chunks, { type: chunks[0].type });
+        url = URL.createObjectURL(completeBlob);
+        video.src = url;
+        video.controls = true;
+        download.href = url;
+        download.download = 'capture.webm';
+        download.style.display = 'inline-block';
+        download.click();
+    };
+    start = Math.floor(performance.now() / 1000);
+    before = start;
+    time.innerHTML = '0:00';
+    iid = setInterval(() => {
+        const elapsed = Math.floor(performance.now() / 1000) - before;
+        if (elapsed == 0) return;
+        before += elapsed;
+        const total = before - start;
+        const min = Math.floor(total / 60);
+        const sec = total - min * 60;
+        time.innerHTML = min + ':' + ((sec < 10) ? '0' + sec : sec);
+    }, 200);
+    recorder.start();
+    recordIcon.style.borderRadius = 0;
+}
+
+function stopCapture() {
+    recorder.stop();
+    clearInterval(iid);
+    video.pause();
+    video.srcObject = null;
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+    recordIcon.style = '';
+}
+
+function dumpInfo() {
+    stream.getTracks().forEach(track => {
+        console.info("\nTrack settings:\n" +
+            JSON.stringify(track.getSettings()) +
+            "\nTrack constraints:\n" +
+            JSON.stringify(track.getConstraints()));
+    });
+}
+
+record.addEventListener('click', e => stream ? stopCapture() : startCapture());
+</script>
+</body>
+</html>
