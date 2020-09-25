@@ -167,11 +167,9 @@ function dumpInfo(stream) {
 
 function main() {
     let bundle = null;
-    let locked = false;
 
     record.onclick = async e => {
-        if (locked) return;
-        locked = true;
+        record.disabled = true;
 
         if (bundle) {
             stopCapture(bundle);
@@ -180,8 +178,8 @@ function main() {
             bundle = await startCapture();
         }
 
-        locked = false;
-    }
+        record.disabled = false;
+    };
 }
 
 main();
