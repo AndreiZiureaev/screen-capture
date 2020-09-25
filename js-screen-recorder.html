@@ -18,7 +18,7 @@ body {
     background-color: rgb(214, 26, 26);
     border: none;
     border-radius: 50%;
-    margin-top: 1em;
+    margin: 1em 0;
     height: 5em;
     width: 5em;
 }
@@ -48,16 +48,23 @@ body {
 <video id="video" width="569" height="320"></video><br>
 <span id="time">0:00</span><br>
 <button id="record"><div></div></button><br>
+<input type="checkbox" id="mic">
+<label id="micl" for="mic">Mic</label><br>
 <a id="download">Download</a>
 <script>
 const video = document.getElementById('video');
 const time = document.getElementById('time');
 const record = document.getElementById('record');
 const recordIcon = record.querySelector('div');
+const mic = document.getElementById('mic');
+const micl = document.getElementById('micl');
 const download = document.getElementById('download');
 let url = null;
 
 async function addAudioStream(stream) {
+    mic.disabled = true;
+    if (!mic.checked) return;
+
     let audio;
     try {
         audio = await navigator.mediaDevices.getUserMedia({ audio: {
@@ -66,7 +73,11 @@ async function addAudioStream(stream) {
             echoCancellation: false,
             channelCount: 1
         }});
-    } catch (err) { console.info('No audio: ' + err); return; }
+    } catch (err) {
+        console.info('No audio: ' + err);
+        micl.innerHTML = "Mic (blocked)";
+        return;
+    }
 
     audio.getAudioTracks().forEach(track => stream.addTrack(track));
 }
@@ -154,6 +165,8 @@ function stopCapture(bundle) {
     clearInterval(bundle.iid);
     bundle.recorder.stop();
     bundle.stream.getTracks().forEach(track => track.stop());
+    micl.innerHTML = "Mic";
+    mic.disabled = false;
 }
 
 function dumpInfo(stream) {
