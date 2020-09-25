@@ -60,6 +60,7 @@ const mic = document.getElementById('mic');
 const micl = document.getElementById('micl');
 const download = document.getElementById('download');
 let url = null;
+let recorder = null;
 
 async function addAudioStream(stream) {
     mic.disabled = true;
@@ -91,16 +92,15 @@ function startVideo(stream) {
 function stopVideo() {
     video.pause();
     video.srcObject = null;
-    video.src = url;
     video.controls = true;
 }
 
-function newRecorder(stream) {
+function newRecorder(stream, iid) {
     const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
     const chunks = [];
 
     recorder.ondataavailable = e => chunks.push(e.data);
-    recorder.onstop = e => finalizeRecording(chunks);
+    recorder.onstop = e => stopCapture(stream, iid, chunks);
 
     return recorder;
 }
@@ -113,7 +113,7 @@ function finalizeRecording(chunks) {
     const completeBlob = new Blob(chunks, { type: chunks[0].type });
     url = URL.createObjectURL(completeBlob);
 
-    stopVideo();
+    video.src = url;
 
     download.href = url;
     download.download = 'capture.webm';
@@ -150,23 +150,28 @@ async function startCapture() {
     dumpInfo(stream);
     startVideo(stream);
 
-    const recorder = newRecorder(stream);
-    recorder.start();
-
     const iid = startTimer();
+
+    const recorder = newRecorder(stream, iid);
+    recorder.start();
 
     recordIcon.style.borderRadius = 0;
 
-    return { stream, recorder, iid };
+    return recorder;
 }
 
-function stopCapture(bundle) {
+function stopCapture(stream, iid, chunks) {
     recordIcon.style = '';
-    clearInterval(bundle.iid);
-    bundle.recorder.stop();
-    bundle.stream.getTracks().forEach(track => track.stop());
+    clearInterval(iid);
+    stopVideo();
+    stream.getTracks().forEach(track => track.stop());
     micl.innerHTML = "Mic";
     mic.disabled = false;
+
+    finalizeRecording(chunks);
+
+    recorder = null;
+    record.disabled = false;
 }
 
 function dumpInfo(stream) {
@@ -178,24 +183,16 @@ function dumpInfo(stream) {
     });
 }
 
-function main() {
-    let bundle = null;
+record.onclick = async e => {
+    record.disabled = true;
 
-    record.onclick = async e => {
-        record.disabled = true;
-
-        if (bundle) {
-            stopCapture(bundle);
-            bundle = null;
-        } else {
-            bundle = await startCapture();
-        }
-
+    if (recorder) {
+        recorder.stop();
+    } else {
+        recorder = await startCapture();
         record.disabled = false;
-    };
-}
-
-main();
+    }
+};
 </script>
 </body>
 </html>
